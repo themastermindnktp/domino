@@ -71,7 +71,7 @@ describe('1. RandomAlgorithm', () => {
       expect(dominoManager).to.equal(user.address, 'Incorrect `dominoManager` address');
     });
 
-    it('1.2.2. Register Domino Manager contract only once', async () => {
+    it('1.2.2. Register Domino Manager contract unsuccessfully due to Domino Manager has already been registered', async () => {
       await randomAlgorithm.connect(user).registerDominoManager();
       await expect(randomAlgorithm.connect(admin).registerDominoManager()).to.be.revertedWith(
         'RandomAlgorithm: Domino Manager has already been registered',

@@ -27,7 +27,7 @@ contract AuctionManager is Permission {
     DominoManager public immutable dominoManager;
 
     uint256 public auctionNumber;
-    mapping(uint256 => Auction) auctions;
+    mapping(uint256 => Auction) public auctions;
 
     uint256 public fee;
 
@@ -41,7 +41,7 @@ contract AuctionManager is Permission {
         uint256 endTimestamp,
         uint256 indexed initialPrice
     );
-    event AuctionCancel(uint256 indexed auctionId);
+    event AuctionCancellation(uint256 indexed auctionId);
     event Bid(uint256 indexed auctionId, address indexed account, uint256 indexed value);
     event DominoRetrieval(uint256 indexed auctionId);
     event BidWithdrawal(uint256 indexed auctionId, uint256 indexed value, uint256 indexed fee);
@@ -71,12 +71,13 @@ contract AuctionManager is Permission {
         uint256 _duration,
         uint256 _initialPrice
     ) external {
-        dominoManager.lockDomino(msg.sender, _firstNumber, _secondNumber);
-
+        require(_duration > 0, "AuctionManager: The duration must be greater than 0");
         require(
             block.timestamp + _duration < dominoManager.currentRoundEndTimestamp(),
             "AuctionManager: Auction must end before the current round does"
         );
+
+        dominoManager.lockDomino(msg.sender, _firstNumber, _secondNumber);
 
         auctionNumber++;
         auctions[auctionNumber] = Auction(
@@ -103,65 +104,80 @@ contract AuctionManager is Permission {
     }
 
     function cancelAuction(uint256 _auctionId) external {
-        Auction memory auctionData = auctions[_auctionId];
-        require(auctionData.seller == msg.sender, "AuctionManager: Unauthorized");
-        require(auctionData.endTimestamp > block.timestamp, "AuctionManager: The request auction has already ended");
-        require(auctionData.highestBidder == address(0), "AuctionManager: Can no longer cancel since there were bidders");
+        require(_auctionId <= auctionNumber, "AuctionManager: Invalid auction index");
 
-        dominoManager.unlockDomino(msg.sender, auctionData.firstNumber, auctionData.secondNumber);
+        Auction memory auction = auctions[_auctionId];
+        require(auction.seller != address(0), "AuctionManager: The requested auction has been cancelled");
+        require(auction.seller == msg.sender, "AuctionManager: Unauthorized");
+        require(auction.endTimestamp > block.timestamp, "AuctionManager: The request auction has already ended");
+        require(auction.highestBidder == address(0), "AuctionManager: Can no longer cancel since there was bidding");
+
+        dominoManager.unlockDomino(msg.sender, auction.firstNumber, auction.secondNumber);
 
         delete auctions[_auctionId];
 
-        emit AuctionCancel(_auctionId);
+        emit AuctionCancellation(_auctionId);
     }
 
     function bid(uint256 _auctionId, uint256 _value) external {
-        Auction storage auctionData = auctions[_auctionId];
-        require(auctionData.endTimestamp > block.timestamp, "AuctionManager: The request auction has already ended");
-        require(auctionData.seller != msg.sender, "AuctionManager: Seller cannot bid");
-        require(auctionData.highestBid < _value, "AuctionManager: Must bid higher than the current highest one");
+        require(_auctionId <= auctionNumber, "AuctionManager: Invalid auction index");
 
-        cash.transferFrom(msg.sender, address(this), _value);
-        if (auctionData.highestBidder != address(0)) {
-            cash.transfer(auctionData.highestBidder, auctionData.highestBid);
+        Auction storage auction = auctions[_auctionId];
+        require(auction.seller != address(0), "AuctionManager: The requested auction has been cancelled");
+        require(auction.endTimestamp > block.timestamp, "AuctionManager: The requested auction has ended");
+        require(auction.highestBid < _value, "AuctionManager: Must bid higher than the current highest one");
+
+        if (msg.sender == auction.highestBidder) {
+            cash.transferFrom(msg.sender, address(this), _value - auction.highestBid);
+        } else {
+            cash.transferFrom(msg.sender, address(this), _value);
+            if (auction.highestBidder != address(0)) {
+                cash.transfer(auction.highestBidder, auction.highestBid);
+            }
         }
 
-        auctionData.highestBidder = msg.sender;
-        auctionData.highestBid = _value;
+        auction.highestBidder = msg.sender;
+        auction.highestBid = _value;
 
         emit Bid(_auctionId, msg.sender, _value);
     }
 
     function retrieveDomino(uint256 _auctionId) external {
-        Auction storage auctionData = auctions[_auctionId];
+        require(_auctionId <= auctionNumber, "AuctionManager: Invalid auction index");
+
+        Auction storage auction = auctions[_auctionId];
+        require(auction.seller != address(0), "AuctionManager: The requested auction has been cancelled");
         require(
-            auctionData.highestBidder == address(0) || auctionData.highestBidder == msg.sender,
+            (auction.highestBidder == address(0) && msg.sender == auction.seller) || auction.highestBidder == msg.sender,
             "AuctionManager: Unauthorized"
         );
-        require(auctionData.endTimestamp <= block.timestamp, "AuctionManager: This auction has not ended yet");
-        require(!auctionData.dominoRetrieved, "AuctionManager: The domino has already been retrieved once");
+        require(auction.endTimestamp <= block.timestamp, "AuctionManager: This auction has not ended yet");
+        require(!auction.dominoRetrieved, "AuctionManager: The domino has already been retrieved");
 
-        auctionData.dominoRetrieved = true;
-        dominoManager.unlockDomino(msg.sender, auctionData.firstNumber, auctionData.secondNumber);
+        auction.dominoRetrieved = true;
+        dominoManager.unlockDomino(msg.sender, auction.firstNumber, auction.secondNumber);
 
         emit DominoRetrieval(_auctionId);
     }
 
     function withdrawBid(uint256 _auctionId) external {
-        Auction storage auctionData = auctions[_auctionId];
-        require(auctionData.seller == msg.sender, "AuctionManager: Unauthorized");
-        require(auctionData.endTimestamp <= block.timestamp, "AuctionManager: This auction has not ended yet");
-        require(auctionData.highestBidder != address(0), "AuctionManager: None tried to buy this domino");
-        require(!auctionData.bidWithdrawn, "AuctionManager: The bid has already been withdrawn once");
+        require(_auctionId <= auctionNumber, "AuctionManager: Invalid auction index");
 
-        auctionData.bidWithdrawn = true;
+        Auction storage auction = auctions[_auctionId];
+        require(auction.seller != address(0), "AuctionManager: The requested auction has been cancelled");
+        require(auction.seller == msg.sender, "AuctionManager: Unauthorized");
+        require(auction.endTimestamp <= block.timestamp, "AuctionManager: This auction has not ended yet");
+        require(auction.highestBidder != address(0), "AuctionManager: No one bid");
+        require(!auction.bidWithdrawn, "AuctionManager: The bid has already been withdrawn");
 
-        uint256 additionalFee = MulDiv.mulDiv(auctionData.highestBid, Constant.AUCTION_FEE_PERCENT, 100);
-        uint256 valueAfterFee = auctionData.highestBid - additionalFee;
+        auction.bidWithdrawn = true;
+
+        uint256 additionalFee = MulDiv.mulDiv(auction.highestBid, Constant.AUCTION_FEE_PERCENT, 100);
+        uint256 bidAfterFee = auction.highestBid - additionalFee;
         fee += additionalFee;
-        cash.transfer(msg.sender, valueAfterFee);
+        cash.transfer(msg.sender, bidAfterFee);
 
-        emit BidWithdrawal(_auctionId, valueAfterFee, additionalFee);
+        emit BidWithdrawal(_auctionId, bidAfterFee, additionalFee);
     }
 
     function withdrawFee() external permittedTo(admin) {

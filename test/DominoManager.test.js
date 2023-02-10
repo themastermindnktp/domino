@@ -2,7 +2,7 @@ const { ethers } = require('hardhat');
 const { expect } = require('chai');
 const { mine } = require('@nomicfoundation/hardhat-network-helpers');
 
-const { nullAddress, maxUInt256 } = require('./helper');
+const { nullAddress, maxUInt256, increaseTime, expectBalance } = require('./helper');
 const { getEventValues } = require('../common/transaction');
 const { EXTENDED_TIMEOUT } = require('./config');
 
@@ -142,7 +142,7 @@ describe('2. DominoManager', () => {
       expect(auctionManager).to.equal(user1.address, 'Incorrect `auctionManager` address');
     });
 
-    it('2.4.2. Register Auction Manager contract only once', async () => {
+    it('2.4.2. Register Auction Manager contract unsuccessfully due to Auction Manager has already been registered', async () => {
       await dominoManager.connect(user1).registerAuctionManager();
       await expect(dominoManager.connect(user2).registerAuctionManager()).to.be.revertedWith(
         'DominoManager: Auction Manager has already been registered',
@@ -224,8 +224,8 @@ describe('2. DominoManager', () => {
       );
 
       await dominoManager.startNewRound(10000, 1, 1);
-      await ethers.provider.send('evm_increaseTime', [20000]);
-      await mine(10);
+
+      await increaseTime(ethers.provider, 10000);
 
       await expect(dominoManager.currentRoundEndTimestamp()).revertedWith(
         'DominoManager: No round is available at the moment',
@@ -257,11 +257,8 @@ describe('2. DominoManager', () => {
       const dominoNumber = await dominoManager.currentRoundDominoNumber(user1.address, 1, 2);
       expect(dominoNumber).to.equal(2, 'Incorrect `dominoNumbers` values');
 
-      const userBalance = await cash.balanceOf(user1.address);
-      expect(userBalance).to.equal('6000000000000000000', 'Incorrect balance');
-
-      const contractBalance = await cash.balanceOf(dominoManager.address);
-      expect(contractBalance).to.equal('4000000000000000000', 'Incorrect balance');
+      await expectBalance(cash, user1.address, '6000000000000000000');
+      await expectBalance(cash, dominoManager.address, '4000000000000000000');
     });
 
     it('2.7.2. Draw a domino unsuccessfully due to no round is available', async () => {
@@ -270,8 +267,8 @@ describe('2. DominoManager', () => {
       );
 
       await dominoManager.startNewRound(10000, 1, 1);
-      await ethers.provider.send('evm_increaseTime', [20000]);
-      await mine(10);
+
+      await increaseTime(ethers.provider, 10000);
 
       await expect(dominoManager.connect(user1).drawDomino()).to.be.revertedWith(
         'DominoManager: No round is available at the moment',
@@ -329,8 +326,8 @@ describe('2. DominoManager', () => {
       );
 
       await dominoManager.startNewRound(10000, 1, 1);
-      await ethers.provider.send('evm_increaseTime', [20000]);
-      await mine(10);
+
+      await increaseTime(ethers.provider, 10000);
 
       await expect(dominoManager.currentRoundDominoNumber(user1.address, 0, 0)).to.be.revertedWith(
         'DominoManager: No round is available at the moment',
@@ -343,7 +340,7 @@ describe('2. DominoManager', () => {
       await dominoManager.connect(user1).registerAuctionManager();
     });
 
-    it('2.9.1. Lock a dominoManager successfully', async () => {
+    it('2.9.1. Lock a domino successfully', async () => {
       await dominoManager.startNewRound(10000, 5, 1);
 
       await cash.mintFor(user2.address, 10);
@@ -375,8 +372,8 @@ describe('2. DominoManager', () => {
       );
 
       await dominoManager.startNewRound(10000, 1, 1);
-      await ethers.provider.send('evm_increaseTime', [20000]);
-      await mine(10);
+
+      await increaseTime(ethers.provider, 10000);
 
       await expect(dominoManager.connect(user1).lockDomino(user2.address, 0, 0)).to.be.revertedWith(
         'DominoManager: No round is available at the moment',
@@ -433,8 +430,8 @@ describe('2. DominoManager', () => {
       );
 
       await dominoManager.startNewRound(10000, 1, 1);
-      await ethers.provider.send('evm_increaseTime', [20000]);
-      await mine(10);
+
+      await increaseTime(ethers.provider, 10000);
 
       await expect(dominoManager.connect(user1).unlockDomino(user2.address, 0, 0)).to.be.revertedWith(
         'DominoManager: No round is available at the moment',
@@ -499,8 +496,8 @@ describe('2. DominoManager', () => {
       );
 
       await dominoManager.startNewRound(10000, 1, 1);
-      await ethers.provider.send('evm_increaseTime', [20000]);
-      await mine(10);
+
+      await increaseTime(ethers.provider, 10000);
 
       await expect(dominoManager.connect(user1).submitDominoChain([])).to.be.revertedWith(
         'DominoManager: No round is available at the moment',
@@ -563,8 +560,8 @@ describe('2. DominoManager', () => {
       );
 
       await dominoManager.startNewRound(10000, 1, 1);
-      await ethers.provider.send('evm_increaseTime', [20000]);
-      await mine(10);
+
+      await increaseTime(ethers.provider, 10000);
 
       await expect(dominoManager.currentRoundScore(user1.address)).to.be.revertedWith(
         'DominoManager: No round is available at the moment',
@@ -573,7 +570,7 @@ describe('2. DominoManager', () => {
   });
 
   describe('2.13. withdrawReward', async () => {
-    it('2.13.1. withdraw reward successfully', async () => {
+    it('2.13.1. Withdraw reward successfully', async () => {
       await cash.mintFor(user1.address, 10);
       await cash.mintFor(user2.address, 10);
       await cash.mintFor(user3.address, 10);
@@ -597,17 +594,10 @@ describe('2. DominoManager', () => {
         Total                 14e18       50      126e17    14e17
        */
 
-      let balance1 = await cash.balanceOf(user1.address);
-      expect(balance1).to.equal('3000000000000000000', 'Incorrect balance');
-
-      let balance2 = await cash.balanceOf(user2.address);
-      expect(balance2).to.equal('7000000000000000000', 'Incorrect balance');
-
-      let balance3 = await cash.balanceOf(user3.address);
-      expect(balance3).to.equal('6000000000000000000', 'Incorrect balance');
-
-      let contractBalance = await cash.balanceOf(dominoManager.address);
-      expect(contractBalance).to.equal('14000000000000000000', 'Incorrect balance');
+      await expectBalance(cash, user1.address, '3000000000000000000');
+      await expectBalance(cash, user2.address, '7000000000000000000');
+      await expectBalance(cash, user3.address, '6000000000000000000');
+      await expectBalance(cash, dominoManager.address, '14000000000000000000');
 
       let score1 = await dominoManager.currentRoundScore(user1.address);
       expect(score1).to.equal(25, 'Incorrect `scores` values');
@@ -621,25 +611,17 @@ describe('2. DominoManager', () => {
       let totalScore = (await dominoManager.rounds(1)).totalScore;
       expect(totalScore).to.equal(50, 'Incorrect `totalScore` value');
 
-      await ethers.provider.send('evm_increaseTime', [20000]);
-      await mine(10);
+      await increaseTime(ethers.provider, 10000);
 
       await dominoManager.connect(user1).withdrawReward(1);
       await dominoManager.connect(user2).withdrawReward(1);
       await dominoManager.startNewRound(10000, 10, 1);
       await dominoManager.connect(user3).withdrawReward(1);
 
-      balance1 = await cash.balanceOf(user1.address);
-      expect(balance1).to.equal('9300000000000000000', 'Incorrect balance');
-
-      balance2 = await cash.balanceOf(user2.address);
-      expect(balance2).to.equal('9268000000000000000', 'Incorrect balance');
-
-      balance3 = await cash.balanceOf(user3.address);
-      expect(balance3).to.equal('10032000000000000000', 'Incorrect balance');
-
-      contractBalance = await cash.balanceOf(dominoManager.address);
-      expect(contractBalance).to.equal('1400000000000000000', 'Incorrect balance');
+      await expectBalance(cash, user1.address, '9300000000000000000');
+      await expectBalance(cash, user2.address, '9268000000000000000');
+      await expectBalance(cash, user3.address, '10032000000000000000');
+      await expectBalance(cash, dominoManager.address, '1400000000000000000');
 
       await expect(dominoManager.connect(user1).withdrawReward(1)).to.be.revertedWith(
         'DominoManager: No reward in the requested round to withdraw',
@@ -669,8 +651,8 @@ describe('2. DominoManager', () => {
 
     it('2.13.4. Withdraw reward unsuccessfully due to score is 0', async () => {
       await dominoManager.startNewRound(10000, 10, 1);
-      await ethers.provider.send('evm_increaseTime', [20000]);
-      await mine(10);
+
+      await increaseTime(ethers.provider, 10000);
 
       await expect(dominoManager.connect(user1).withdrawReward(1)).to.be.revertedWith(
         'DominoManager: No reward in the requested round to withdraw',
@@ -679,7 +661,7 @@ describe('2. DominoManager', () => {
   });
 
   describe('2.14. withdrawFee', async () => {
-    it('2.14.1. withdraw fee successfully', async () => {
+    it('2.14.1. Withdraw fee successfully', async () => {
       await cash.mintFor(user1.address, 10);
       await cash.mintFor(user2.address, 10);
       await cash.mintFor(user3.address, 10);
@@ -703,25 +685,18 @@ describe('2. DominoManager', () => {
         Total                 14e18       50      126e17    14e17
        */
 
-      let adminBalance = await cash.balanceOf(admin.address);
-      expect(adminBalance).to.equal('0', 'Incorrect balance');
-
-      let contractBalance = await cash.balanceOf(dominoManager.address);
-      expect(contractBalance).to.equal('14000000000000000000', 'Incorrect balance');
+      await expectBalance(cash, admin.address, '0');
+      await expectBalance(cash, dominoManager.address, '14000000000000000000');
 
       let fee = await dominoManager.fee();
       expect(fee).to.equal('1400000000000000000', 'Incorrect `fee` value');
 
-      await ethers.provider.send('evm_increaseTime', [20000]);
-      await mine(10);
+      await increaseTime(ethers.provider, 10000);
 
       await dominoManager.withdrawFee();
 
-      adminBalance = await cash.balanceOf(admin.address);
-      expect(adminBalance).to.equal('1400000000000000000', 'Incorrect balance');
-
-      contractBalance = await cash.balanceOf(dominoManager.address);
-      expect(contractBalance).to.equal('12600000000000000000', 'Incorrect balance');
+      await expectBalance(cash, admin.address, '1400000000000000000')
+      await expectBalance(cash, dominoManager.address, '12600000000000000000')
 
       fee = await dominoManager.fee();
       expect(fee).to.equal('0', 'Incorrect `fee` value');
@@ -731,13 +706,13 @@ describe('2. DominoManager', () => {
       );
     });
 
-    it('2.14.2. withdraw fee unsuccessfully due to the caller is not `admin`', async () => {
+    it('2.14.2. Withdraw fee unsuccessfully due to the caller is not `admin`', async () => {
       await expect(dominoManager.connect(user1).withdrawFee()).to.be.revertedWith(
         'Permission: Unauthorized',
       );
     });
 
-    it('2.14.3. withdraw fee unsuccessfully due to no fee left', async () => {
+    it('2.14.3. Withdraw fee unsuccessfully due to no fee left', async () => {
       await expect(dominoManager.withdrawFee()).to.be.revertedWith(
         'DominoManager: No fee to withdraw',
       );
