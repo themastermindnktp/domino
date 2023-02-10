@@ -4,10 +4,10 @@ pragma solidity 0.8.9;
 import "./libraries/Constant.sol";
 import "./libraries/MulDiv.sol";
 
-import "./Domino.sol";
+import "./DominoManager.sol";
 
-contract Auction is Permission {
-    struct AuctionData {
+contract AuctionManager is Permission {
+    struct Auction {
         address seller;
         uint256 firstNumber;
         uint256 secondNumber;
@@ -24,14 +24,15 @@ contract Auction is Permission {
     address public admin;
 
     IERC20 public immutable cash;
-    Domino public immutable domino;
+    DominoManager public immutable dominoManager;
 
-    uint256 auctionNumber;
-    mapping(uint256 => AuctionData) auctions;
+    uint256 public auctionNumber;
+    mapping(uint256 => Auction) auctions;
 
     uint256 public fee;
 
-    event AuctionConduction(
+    event AdministrationTransfer(address indexed admin);
+    event NewAuction(
         address indexed auctionId,
         uint256 indexed seller,
         uint256 firstNumber,
@@ -46,30 +47,39 @@ contract Auction is Permission {
     event BidWithdrawal(uint256 indexed auctionId, uint256 indexed value, uint256 indexed fee);
     event FeeWithdrawal(uint256 indexed value);
 
-    constructor(IERC20 _cash, Domino _domino) {
+    constructor(IERC20 _cash, DominoManager _domino) {
         admin = msg.sender;
 
         cash = _cash;
-        domino = _domino;
+        dominoManager = _domino;
 
-        _domino.registerAuction();
+        _domino.registerAuctionManager();
     }
 
-    function conductAuction(
+    function transferAdministration(address _account) external permittedTo(admin) {
+        require(_account != address(0), "AuctionManager: Prohibited null address");
+        require(_account != admin, "AuctionManager: The new admin is identical to the current admin");
+
+        admin = _account;
+
+        emit AdministrationTransfer(_account);
+    }
+
+    function startNewAuction(
         uint256 _firstNumber,
         uint256 _secondNumber,
         uint256 _duration,
         uint256 _initialPrice
-    ) external returns (uint256) {
-        domino.lockDomino(msg.sender, _firstNumber, _secondNumber);
+    ) external {
+        dominoManager.lockDomino(msg.sender, _firstNumber, _secondNumber);
 
         require(
-            block.timestamp + _duration < domino.currentRoundEndTimestamp(),
-            "Auction: Auction must end before the current round does"
+            block.timestamp + _duration < dominoManager.currentRoundEndTimestamp(),
+            "AuctionManager: Auction must end before the current round does"
         );
 
         auctionNumber++;
-        auctions[auctionNumber] = AuctionData(
+        auctions[auctionNumber] = Auction(
             msg.sender,
             _firstNumber,
             _secondNumber,
@@ -81,7 +91,7 @@ contract Auction is Permission {
             false
         );
 
-        emit AuctionConduction(
+        emit NewAuction(
             msg.sender,
             auctionNumber,
             _firstNumber,
@@ -90,17 +100,15 @@ contract Auction is Permission {
             block.timestamp + _duration,
             _initialPrice
         );
-
-        return auctionNumber;
     }
 
     function cancelAuction(uint256 _auctionId) external {
-        AuctionData memory auctionData = auctions[_auctionId];
-        require(auctionData.seller == msg.sender, "Auction: Unauthorized");
-        require(auctionData.endTimestamp > block.timestamp, "Auction: The request auction has already ended");
-        require(auctionData.highestBidder == address(0), "Auction: Can no longer cancel since there were bidders");
+        Auction memory auctionData = auctions[_auctionId];
+        require(auctionData.seller == msg.sender, "AuctionManager: Unauthorized");
+        require(auctionData.endTimestamp > block.timestamp, "AuctionManager: The request auction has already ended");
+        require(auctionData.highestBidder == address(0), "AuctionManager: Can no longer cancel since there were bidders");
 
-        domino.unlockDomino(msg.sender, auctionData.firstNumber, auctionData.secondNumber);
+        dominoManager.unlockDomino(msg.sender, auctionData.firstNumber, auctionData.secondNumber);
 
         delete auctions[_auctionId];
 
@@ -108,10 +116,10 @@ contract Auction is Permission {
     }
 
     function bid(uint256 _auctionId, uint256 _value) external {
-        AuctionData storage auctionData = auctions[_auctionId];
-        require(auctionData.endTimestamp > block.timestamp, "Auction: The request auction has already ended");
-        require(auctionData.seller != msg.sender, "Auction: Seller cannot bid");
-        require(auctionData.highestBid < _value, "Auction: Must bid higher than the current highest one");
+        Auction storage auctionData = auctions[_auctionId];
+        require(auctionData.endTimestamp > block.timestamp, "AuctionManager: The request auction has already ended");
+        require(auctionData.seller != msg.sender, "AuctionManager: Seller cannot bid");
+        require(auctionData.highestBid < _value, "AuctionManager: Must bid higher than the current highest one");
 
         cash.transferFrom(msg.sender, address(this), _value);
         if (auctionData.highestBidder != address(0)) {
@@ -125,26 +133,26 @@ contract Auction is Permission {
     }
 
     function retrieveDomino(uint256 _auctionId) external {
-        AuctionData storage auctionData = auctions[_auctionId];
+        Auction storage auctionData = auctions[_auctionId];
         require(
             auctionData.highestBidder == address(0) || auctionData.highestBidder == msg.sender,
-            "Auction: Unauthorized"
+            "AuctionManager: Unauthorized"
         );
-        require(auctionData.endTimestamp <= block.timestamp, "Auction: This auction has not ended yet");
-        require(!auctionData.dominoRetrieved, "Auction: The domino has already been retrieved once");
+        require(auctionData.endTimestamp <= block.timestamp, "AuctionManager: This auction has not ended yet");
+        require(!auctionData.dominoRetrieved, "AuctionManager: The domino has already been retrieved once");
 
         auctionData.dominoRetrieved = true;
-        domino.unlockDomino(msg.sender, auctionData.firstNumber, auctionData.secondNumber);
+        dominoManager.unlockDomino(msg.sender, auctionData.firstNumber, auctionData.secondNumber);
 
         emit DominoRetrieval(_auctionId);
     }
 
     function withdrawBid(uint256 _auctionId) external {
-        AuctionData storage auctionData = auctions[_auctionId];
-        require(auctionData.seller == msg.sender, "Auction: Unauthorized");
-        require(auctionData.endTimestamp <= block.timestamp, "Auction: This auction has not ended yet");
-        require(auctionData.highestBidder != address(0), "Auction: None tried to buy this domino");
-        require(!auctionData.bidWithdrawn, "Auction: The bid has already been withdrawn once");
+        Auction storage auctionData = auctions[_auctionId];
+        require(auctionData.seller == msg.sender, "AuctionManager: Unauthorized");
+        require(auctionData.endTimestamp <= block.timestamp, "AuctionManager: This auction has not ended yet");
+        require(auctionData.highestBidder != address(0), "AuctionManager: None tried to buy this domino");
+        require(!auctionData.bidWithdrawn, "AuctionManager: The bid has already been withdrawn once");
 
         auctionData.bidWithdrawn = true;
 
@@ -157,7 +165,7 @@ contract Auction is Permission {
     }
 
     function withdrawFee() external permittedTo(admin) {
-        require(fee > 0, "Auction: No fee to withdraw");
+        require(fee > 0, "AuctionManager: No fee to withdraw");
 
         uint256 value = fee;
         fee = 0;

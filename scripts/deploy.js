@@ -35,7 +35,7 @@ async function deploy() {
     const Cash = await ethers.getContractFactory('MockCash');
     const cash = await Cash.connect(admin).deploy();
     await cash.deployTransaction.wait();
-    console.log('Cash is deployed to address:             \t', cash.address);
+    console.log('Cash is deployed to address:                 \t', cash.address);
 
     for (let account of accounts) {
       await cash.connect(admin).mintFor(account.address, '1000000000000000000');
@@ -46,26 +46,26 @@ async function deploy() {
     cashAddress = hardhat.network.config.cashAddress;
   }
 
-  const Random = await ethers.getContractFactory('Random');
-  const random = await Random.connect(admin).deploy();
-  await random.deployTransaction.wait();
-  console.log('Random is deployed to address:           \t', random.address);
+  const RandomAlgorithm = await ethers.getContractFactory('RandomAlgorithm');
+  const randomAlgorithm = await RandomAlgorithm.connect(admin).deploy();
+  await randomAlgorithm.deployTransaction.wait();
+  console.log('Random Algorithm is deployed to address:     \t', randomAlgorithm.address);
 
-  const Domino = await ethers.getContractFactory('Domino');
-  const domino = await Domino.connect(admin).deploy(cashAddress, random.address);
-  await domino.deployTransaction.wait();
-  console.log('Domino is deployed to address:           \t', domino.address);
+  const DominoManager = await ethers.getContractFactory('DominoManager');
+  const dominoManager = await DominoManager.connect(admin).deploy(cashAddress, randomAlgorithm.address);
+  await dominoManager.deployTransaction.wait();
+  console.log('Domino Manager is deployed to address:       \t', dominoManager.address);
 
-  const Auction = await ethers.getContractFactory('Auction');
-  const auction = await Auction.connect(admin).deploy(cashAddress, domino.address);
-  await auction.deployTransaction.wait();
-  console.log('Auction is deployed to address:          \t', auction.address);
+  const AuctionManager = await ethers.getContractFactory('AuctionManager');
+  const auctionManager = await AuctionManager.connect(admin).deploy(cashAddress, dominoManager.address);
+  await auctionManager.deployTransaction.wait();
+  console.log('Auction Manager is deployed to address:      \t', auctionManager.address);
 
   const contractAddresses = {
     'Cash': cashAddress,
-    'Random': random.address,
-    'Domino': domino.address,
-    'Auction': auction.address,
+    'RandomAlgorithm': randomAlgorithm.address,
+    'DominoManager': dominoManager.address,
+    'AuctionManager': auctionManager.address,
   };
   await fs.writeFileSync("contracts.json", JSON.stringify(contractAddresses));
 }

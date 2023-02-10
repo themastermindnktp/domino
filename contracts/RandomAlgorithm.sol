@@ -3,29 +3,29 @@ pragma solidity 0.8.9;
 
 import "./utils/Permission.sol";
 
-interface IRandom {
-    function registerDomino() external;
+interface IRandomAlgorithm {
+    function registerDominoManager() external;
 
     function integer(uint256 bound) external returns (uint256 result);
 }
 
-contract Random is IRandom, Permission {
-    address public domino;
+contract RandomAlgorithm is IRandomAlgorithm, Permission {
+    address public dominoManager;
 
     uint256 private nonce;
 
-    event DominoRegistration(address domino);
+    event DominoManagerRegistration(address domino);
     event RandomInteger(uint256 indexed value);
 
-    function registerDomino() external {
-        require(domino == address(0), "Random: Domino has already been registered");
+    function registerDominoManager() external {
+        require(dominoManager == address(0), "RandomAlgorithm: Domino Manager has already been registered");
 
-        domino = msg.sender;
+        dominoManager = msg.sender;
 
-        emit DominoRegistration(domino);
+        emit DominoManagerRegistration(dominoManager);
     }
 
-    function integer(uint256 bound) external permittedTo(domino) returns (uint256 result) {
+    function integer(uint256 bound) external permittedTo(dominoManager) returns (uint256 result) {
         unchecked {
             nonce += block.timestamp;
         }

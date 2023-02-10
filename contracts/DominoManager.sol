@@ -8,9 +8,9 @@ import "./libraries/Constant.sol";
 
 import "./utils/Permission.sol";
 
-import "./Random.sol";
+import "./RandomAlgorithm.sol";
 
-contract Domino is Permission {
+contract DominoManager is Permission {
     struct Round {
         uint256 startTimestamp;
         uint256 endTimestamp;
@@ -26,9 +26,9 @@ contract Domino is Permission {
     address public admin;
 
     IERC20 public immutable cash;
-    IRandom public random;
+    IRandomAlgorithm public randomAlgorithm;
 
-    address public auction;
+    address public auctionManager;
 
     uint256 public roundNumber;
     mapping(uint256 => Round) public rounds;
@@ -37,7 +37,7 @@ contract Domino is Permission {
 
     event AdministrationTransfer(address indexed admin);
     event RandomAlgorithmReplacement(address indexed random);
-    event AuctionRegistration(address indexed auction);
+    event AuctionManagerRegistration(address indexed auction);
     event NewRound(
         uint256 indexed roundId,
         uint256 indexed startTimestamp,
@@ -52,18 +52,18 @@ contract Domino is Permission {
     event RewardWithdrawal(address indexed account, uint256 indexed roundId, uint256 value);
     event FeeWithdrawal(uint256 indexed value);
 
-    constructor(IERC20 _cash, Random _random) {
+    constructor(IERC20 _cash, IRandomAlgorithm _random) {
         admin = msg.sender;
 
         cash = _cash;
-        random = _random;
+        randomAlgorithm = _random;
 
-        _random.registerDomino();
+        _random.registerDominoManager();
     }
 
     function transferAdministration(address _account) external permittedTo(admin) {
-        require(_account != address(0), "Domino: Prohibited null address");
-        require(_account != admin, "Domino: The new admin is identical to the current admin");
+        require(_account != address(0), "DominoManager: Prohibited null address");
+        require(_account != admin, "DominoManager: The new admin is identical to the current admin");
 
         admin = _account;
 
@@ -71,29 +71,29 @@ contract Domino is Permission {
     }
 
     function replaceRandomAlgorithm(address _random) external permittedTo(admin) {
-        require(rounds[roundNumber].endTimestamp <= block.timestamp, "Domino: The current round has not ended yet");
-        require(_random != address(0), "Domino: Prohibited null address");
-        require(_random != address(random), "Domino: The new random contract is identical to the current one");
+        require(rounds[roundNumber].endTimestamp <= block.timestamp, "DominoManager: The current round has not ended yet");
+        require(_random != address(0), "DominoManager: Prohibited null address");
+        require(_random != address(randomAlgorithm), "DominoManager: The new Random Algorithm is identical to the current one");
 
-        random = Random(_random);
-        random.registerDomino();
+        randomAlgorithm = RandomAlgorithm(_random);
+        randomAlgorithm.registerDominoManager();
 
         emit RandomAlgorithmReplacement(_random);
     }
 
-    function registerAuction() external {
-        require(auction == address(0), "Domino: Auction has already been registered");
+    function registerAuctionManager() external {
+        require(auctionManager == address(0), "DominoManager: Auction Manager has already been registered");
 
-        auction = msg.sender;
+        auctionManager = msg.sender;
 
-        emit AuctionRegistration(msg.sender);
+        emit AuctionManagerRegistration(msg.sender);
     }
 
     function startNewRound(uint256 _duration, uint256 _dominoSize, uint256 _drawPrice) external permittedTo(admin) {
-        require(rounds[roundNumber].endTimestamp <= block.timestamp, "Domino: The current round has not ended yet");
-        require(_duration > 0, "Domino: The duration must be greater than 0");
-        require(_dominoSize > 0, "Domino: The domino size must be greater than 0");
-        require(_drawPrice > 0, "Domino: The draw price must be greater than 0");
+        require(rounds[roundNumber].endTimestamp <= block.timestamp, "DominoManager: The current round has not ended yet");
+        require(_duration > 0, "DominoManager: The duration must be greater than 0");
+        require(_dominoSize > 0, "DominoManager: The domino size must be greater than 0");
+        require(_drawPrice > 0, "DominoManager: The draw price must be greater than 0");
 
         roundNumber++;
         rounds[roundNumber].startTimestamp = block.timestamp;
@@ -111,13 +111,13 @@ contract Domino is Permission {
     }
 
     function currentRoundEndTimestamp() external view returns (uint256) {
-        require(rounds[roundNumber].endTimestamp > block.timestamp, "Domino: No round is available at the moment");
+        require(rounds[roundNumber].endTimestamp > block.timestamp, "DominoManager: No round is available at the moment");
         return rounds[roundNumber].endTimestamp;
     }
 
     function drawDomino() external {
         Round storage round = rounds[roundNumber];
-        require(round.endTimestamp > block.timestamp, "Domino: No round is available at the moment");
+        require(round.endTimestamp > block.timestamp, "DominoManager: No round is available at the moment");
 
         cash.transferFrom(msg.sender, address(this), round.drawPrice);
 
@@ -127,8 +127,8 @@ contract Domino is Permission {
         round.totalReward += additionalReward;
         fee += additionalFee;
 
-        uint256 firstNumber = random.integer(round.dominoSize);
-        uint256 secondNumber = random.integer(round.dominoSize);
+        uint256 firstNumber = randomAlgorithm.integer(round.dominoSize);
+        uint256 secondNumber = randomAlgorithm.integer(round.dominoSize);
 
         round.dominoNumbers[msg.sender][firstNumber][secondNumber]++;
 
@@ -136,29 +136,29 @@ contract Domino is Permission {
     }
 
     function currentRoundDominoNumber(address _account, uint256 _firstNumber, uint256 _secondNumber) external view returns (uint256) {
-        require(rounds[roundNumber].endTimestamp > block.timestamp, "Domino: No round is available at the moment");
+        require(rounds[roundNumber].endTimestamp > block.timestamp, "DominoManager: No round is available at the moment");
         return rounds[roundNumber].dominoNumbers[_account][_firstNumber][_secondNumber];
     }
 
-    function lockDomino(address _account, uint256 _firstNumber, uint256 _secondNumber) external permittedTo(auction) {
+    function lockDomino(address _account, uint256 _firstNumber, uint256 _secondNumber) external permittedTo(auctionManager) {
         Round storage round = rounds[roundNumber];
-        require(round.endTimestamp > block.timestamp, "Domino: No round is available at the moment");
+        require(round.endTimestamp > block.timestamp, "DominoManager: No round is available at the moment");
 
-        require(round.dominoNumbers[_account][_firstNumber][_secondNumber] > 0, "Domino: The requested account does not have any the requested domino");
+        require(round.dominoNumbers[_account][_firstNumber][_secondNumber] > 0, "DominoManager: The requested account does not have any the requested domino");
 
         round.dominoNumbers[_account][_firstNumber][_secondNumber]--;
-        round.dominoNumbers[auction][_firstNumber][_secondNumber]++;
+        round.dominoNumbers[auctionManager][_firstNumber][_secondNumber]++;
 
         emit DominoLock(_account, _firstNumber, _secondNumber);
     }
 
-    function unlockDomino(address _account, uint256 _firstNumber, uint256 _secondNumber) external permittedTo(auction) {
+    function unlockDomino(address _account, uint256 _firstNumber, uint256 _secondNumber) external permittedTo(auctionManager) {
         Round storage round = rounds[roundNumber];
-        require(round.endTimestamp > block.timestamp, "Domino: No round is available at the moment");
+        require(round.endTimestamp > block.timestamp, "DominoManager: No round is available at the moment");
 
-        require(round.dominoNumbers[auction][_firstNumber][_secondNumber] > 0, "Domino: The requested domino is not locked");
+        require(round.dominoNumbers[auctionManager][_firstNumber][_secondNumber] > 0, "DominoManager: The requested domino is not locked");
 
-        round.dominoNumbers[auction][_firstNumber][_secondNumber]--;
+        round.dominoNumbers[auctionManager][_firstNumber][_secondNumber]--;
         round.dominoNumbers[_account][_firstNumber][_secondNumber]++;
 
         emit DominoUnlock(_account, _firstNumber, _secondNumber);
@@ -166,16 +166,16 @@ contract Domino is Permission {
 
     function submitDominoChain(uint256[] calldata _numbers) external {
         Round storage round = rounds[roundNumber];
-        require(round.endTimestamp > block.timestamp, "Domino: No round is available at the moment");
+        require(round.endTimestamp > block.timestamp, "DominoManager: No round is available at the moment");
 
-        require(_numbers.length > 1, "Domino: Chain must contains at least 2 numbers");
+        require(_numbers.length > 1, "DominoManager: Chain must contains at least 2 numbers");
         uint256 length = _numbers.length - 1;
 
         uint256 firstNumber = _numbers[0];
 
         for (uint256 i = 1; i <= length; i++) {
             uint256 secondNumber = _numbers[i];
-            require(round.dominoNumbers[msg.sender][firstNumber][secondNumber] > 0, "Domino: Insufficient domino");
+            require(round.dominoNumbers[msg.sender][firstNumber][secondNumber] > 0, "DominoManager: Insufficient domino");
             round.dominoNumbers[msg.sender][firstNumber][secondNumber]--;
             firstNumber = secondNumber;
         }
@@ -188,16 +188,16 @@ contract Domino is Permission {
     }
 
     function currentRoundScore(address _account) external view returns (uint256) {
-        require(rounds[roundNumber].endTimestamp > block.timestamp, "Domino: No round is available at the moment");
+        require(rounds[roundNumber].endTimestamp > block.timestamp, "DominoManager: No round is available at the moment");
         return rounds[roundNumber].scores[_account];
     }
 
     function withdrawReward(uint256 _roundId) external {
-        require(_roundId <= roundNumber, "Domino: Invalid round index");
+        require(_roundId <= roundNumber, "DominoManager: Invalid round index");
 
         Round storage round = rounds[_roundId];
-        require(round.endTimestamp <= block.timestamp, "Domino: The requested round has not ended yet");
-        require(round.scores[msg.sender] > 0, "Domino: No reward in the requested round to withdraw");
+        require(round.endTimestamp <= block.timestamp, "DominoManager: The requested round has not ended yet");
+        require(round.scores[msg.sender] > 0, "DominoManager: No reward in the requested round to withdraw");
 
         uint256 reward = MulDiv.mulDiv(round.totalReward, round.scores[msg.sender], round.totalScore);
         round.scores[msg.sender] = 0;
@@ -207,7 +207,7 @@ contract Domino is Permission {
     }
 
     function withdrawFee() external permittedTo(admin) {
-        require(fee > 0, "Domino: No fee to withdraw");
+        require(fee > 0, "DominoManager: No fee to withdraw");
 
         uint256 value = fee;
         fee = 0;
