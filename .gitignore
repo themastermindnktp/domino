@@ -1,0 +1,9 @@
+/.idea
+
+/artifacts
+/cache
+/node_modules
+/test-results
+
+.env
+contracts.json

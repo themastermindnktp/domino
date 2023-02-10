@@ -1,0 +1,5 @@
+{
+  "mochaExplorer.files": "test/**/*.test.js",
+  "require": "hardhat/register",
+  "timeout": 20000
+}

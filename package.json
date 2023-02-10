@@ -1,0 +1,12 @@
+{
+  "name": "hardhat-project",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-network-helpers": "^1.0.7",
+    "@nomicfoundation/hardhat-toolbox": "^2.0.1",
+    "@nomiclabs/hardhat-solhint": "^3.0.0",
+    "@openzeppelin/contracts": "^4.8.1",
+    "dotenv": "^16.0.3",
+    "mocha-junit-reporter": "^2.2.0",
+    "mocha-multi-reporters": "^1.5.1"
+  }
+}
